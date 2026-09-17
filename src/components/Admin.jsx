@@ -28,6 +28,21 @@ const getSubjectText = (entry) => {
   return typeof entry === "string" ? entry : entry.subject || "";
 };
 
+// 💡 クラス名を「学年-組」として数値順に並べる比較関数
+const compareClassNames = (a, b) => {
+  const parse = (name) => {
+    const match = name.match(/^(\d+)-(\d+)/); // 例: "3-10" → [3, 10]
+    if (match) return [Number(match[1]), Number(match[2])];
+    return [Infinity, Infinity]; // 数値形式でないものは最後に回す
+  };
+  const [aGrade, aClass] = parse(a);
+  const [bGrade, bClass] = parse(b);
+
+  if (aGrade !== bGrade) return aGrade - bGrade;
+  if (aClass !== bClass) return aClass - bClass;
+  return a.localeCompare(b); // 完全に同じ数値なら文字列順で保険
+};
+
 const inputStyle = {
   width: "70px",
   padding: "6px",
@@ -113,6 +128,8 @@ function PasswordGate({ onSuccess }) {
     </div>
   );
 }
+
+
 
 const Admin = () => {
   const [isAuthed, setIsAuthed] = useState(
@@ -210,15 +227,16 @@ const Admin = () => {
       </div>
     );
   }
-
   const classNames = Object.keys(schedules)
     .filter((key) => !RESERVED_KEYS.includes(key))
-    .sort();
+    .sort(compareClassNames);
 
-  // 💡 学年ごとにクラスをグループ化
+  // 💡 学年ごとにクラスをグループ化(数値順ソートを適用)
   const groupOrder = [...GRADE_GROUPS.map((g) => g.label), "その他"];
   const grouped = groupOrder.reduce((acc, label) => {
-    acc[label] = classNames.filter((name) => getGradeGroup(name) === label);
+    acc[label] = classNames
+      .filter((name) => getGradeGroup(name) === label)
+      .sort(compareClassNames);
     return acc;
   }, {});
 
