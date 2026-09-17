@@ -6,7 +6,7 @@ import rooms from "../data/rooms";
 import { usePanZoom } from "../hooks/usePanZoom";
 import { useCurrentPeriod } from "../hooks/useCurrentPeriod";
 import { useMyClass } from "../hooks/useMyClass";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore"; // 💡 getDoc から onSnapshot に変更
 import { db } from "../firebase";
 
 const MAP_WIDTH = 1848;
@@ -18,27 +18,34 @@ export default function MapContainer() {
   const { selectedClass, classList, selectClass } = useMyClass();
   const { scale, coords, isDragging, handlers } = usePanZoom(0.7);
 
-  // 💡 Firebaseからデータを取得してlocalStorageに保存（同期）する処理だけ残しています
+  const [, setRefreshKey] = useState(0);
+
+  // 💡 onSnapshot でFirebaseのデータをリアルタイム監視する
   useEffect(() => {
-    const fetchSchedule = async () => {
-      if (!selectedClass) return;
-      
-      try {
-        const docRef = doc(db, "schedules", selectedClass);
-        const docSnap = await getDoc(docRef);
+    if (!selectedClass) return;
 
-        if (docSnap.exists()) {
-          const scheduleData = docSnap.data();
-          
-          // ⚠️ "scheduleKey" の部分は、既存のコードで使っているキー名に変更してください
-          localStorage.setItem("scheduleKey", JSON.stringify(scheduleData));
-        }
-      } catch (error) {
-        console.error("データ取得エラー:", error);
+    const docRef = doc(db, "schedules", selectedClass);
+    
+    // データが更新されるたびに、この中の処理が自動で走ります！
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const scheduleData = docSnap.data();
+        
+        const savedStr = localStorage.getItem("scheduleKey");
+        const allSchedules = savedStr ? JSON.parse(savedStr) : {};
+        
+        allSchedules[selectedClass] = scheduleData;
+        localStorage.setItem("scheduleKey", JSON.stringify(allSchedules));
+        
+        // 画面を再描画させる
+        setRefreshKey((prev) => prev + 1);
       }
-    };
+    }, (error) => {
+      console.error("データ監視エラー:", error);
+    });
 
-    fetchSchedule();
+    // コンポーネントが消えるときに監視を解除するお片付け処理
+    return () => unsubscribe();
   }, [selectedClass]);
 
   const filteredRooms = rooms.filter((room) => room.floor === currentFloor);

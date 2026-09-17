@@ -2,12 +2,28 @@ import defaultSchedule from "../data/schedule.json";
 import { getToday, getCurrentPeriod } from "./dateUtils";
 
 /**
+ * 💡 localStorage から Firebase の最新スケジュールを読み込む関数
+ */
+const getCloudSchedule = () => {
+  try {
+    const data = localStorage.getItem("scheduleKey");
+    return data ? JSON.parse(data) : null;
+  } catch (e) {
+    console.error("ローカルストレージの読み込みエラー:", e);
+    return null;
+  }
+};
+
+/**
  * 指定クラス・曜日・時限の科目名を返す（無ければ null）。
- * scheduleSource を差し替え可能にしておくことで、将来「他クラスの時間割を見る」
- * 機能を追加する際にモックデータや別ソースを渡せるようにしている。
  */
 export const getSubjectAt = (classId, day, period, scheduleSource = defaultSchedule) => {
-  const classSchedule = scheduleSource[classId];
+  // 💡 1. localStorageのクラウドデータと、元のJSONデータを合体（マージ）させる
+  const cloudSchedule = getCloudSchedule() || {};
+  
+  // クラウドデータに該当クラスの情報があればそれを優先、なければローカルJSONを使う
+  const classSchedule = cloudSchedule[classId] || scheduleSource[classId];
+  
   if (!classSchedule) return null;
 
   const daySchedule = classSchedule[day];
@@ -20,11 +36,6 @@ export const getSubjectAt = (classId, day, period, scheduleSource = defaultSched
 
 /**
  * 部屋オブジェクトから表示用の状態（色分け用ステータスとサブラベル）を計算する。
- *
- * @param {object} room - rooms.js の1要素
- * @param {object} [options]
- * @param {object} [options.scheduleSource] - schedule.json の代わりに使うデータ（省略時は実際の時間割）
- * @param {number|null} [options.period] - 判定に使う時限（省略時は現在時刻から自動判定）
  */
 export const getRoomStatus = (room, options = {}) => {
   const { id, role, label } = room;
@@ -52,7 +63,7 @@ export const getRoomStatus = (room, options = {}) => {
 
     const subject = getSubjectAt(id, today, period, scheduleSource);
 
-    return subject ? { status: "using", label: subject } : { status: "free", label: "" };
+    return subject ? { status: "using", label: subject.subject || subject } : { status: "free", label: "" };
   }
 
   // fallback
