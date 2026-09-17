@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Room from "./Room";
 import MapControls from "./MapControls";
 import CorridorPaths from "./CorridorPaths";
@@ -6,6 +6,8 @@ import rooms from "../data/rooms";
 import { usePanZoom } from "../hooks/usePanZoom";
 import { useCurrentPeriod } from "../hooks/useCurrentPeriod";
 import { useMyClass } from "../hooks/useMyClass";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase";
 
 const MAP_WIDTH = 1848;
 const MAP_HEIGHT = 1245;
@@ -15,6 +17,29 @@ export default function MapContainer() {
   const period = useCurrentPeriod();
   const { selectedClass, classList, selectClass } = useMyClass();
   const { scale, coords, isDragging, handlers } = usePanZoom(0.7);
+
+  // 💡 Firebaseからデータを取得してlocalStorageに保存（同期）する処理だけ残しています
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      if (!selectedClass) return;
+      
+      try {
+        const docRef = doc(db, "schedules", selectedClass);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const scheduleData = docSnap.data();
+          
+          // ⚠️ "scheduleKey" の部分は、既存のコードで使っているキー名に変更してください
+          localStorage.setItem("scheduleKey", JSON.stringify(scheduleData));
+        }
+      } catch (error) {
+        console.error("データ取得エラー:", error);
+      }
+    };
+
+    fetchSchedule();
+  }, [selectedClass]);
 
   const filteredRooms = rooms.filter((room) => room.floor === currentFloor);
 
@@ -58,7 +83,11 @@ export default function MapContainer() {
 
             <g id="rooms">
               {filteredRooms.map((room) => (
-                <Room key={room.id} {...room} isMyClass={room.id === selectedClass} />
+                <Room 
+                  key={room.id} 
+                  {...room} 
+                  isMyClass={room.id === selectedClass} 
+                />
               ))}
             </g>
           </svg>
