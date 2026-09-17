@@ -4,6 +4,10 @@ import { db } from "../firebase";
 import defaultSchedule from "../data/schedule.json";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const RESERVED_KEYS = ["types"];
+
+// 💡 パスワードはここで設定（必要に応じて変更してください）
+const ADMIN_PASSWORD = "pine";
 
 const getSubjectText = (entry) => {
   if (entry == null) return "";
@@ -20,7 +24,76 @@ const inputStyle = {
   color: "#222",
 };
 
+// 💡 パスワード入力画面
+function PasswordGate({ onSuccess }) {
+  const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (input === ADMIN_PASSWORD) {
+      sessionStorage.setItem("adminAuthed", "true");
+      onSuccess();
+    } else {
+      setError("パスワードが違います");
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: "#fff",
+        color: "#222",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <form onSubmit={handleSubmit} style={{ textAlign: "center" }}>
+        <h3 style={{ marginBottom: "16px" }}>🔒 管理者パスワード</h3>
+        <input
+          type="password"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          autoFocus
+          style={{
+            padding: "10px",
+            fontSize: "16px",
+            border: "1px solid #ccc",
+            borderRadius: "6px",
+            backgroundColor: "#fff",
+            color: "#222",
+            marginRight: "8px",
+          }}
+        />
+        <button
+          type="submit"
+          style={{
+            padding: "10px 20px",
+            fontSize: "16px",
+            background: "#007bff",
+            color: "#fff",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+          }}
+        >
+          入る
+        </button>
+        {error && <div style={{ color: "red", marginTop: "10px" }}>{error}</div>}
+      </form>
+    </div>
+  );
+}
+
 const Admin = () => {
+  // 💡 このブラウザのタブで既に認証済みかチェック
+  const [isAuthed, setIsAuthed] = useState(
+    () => sessionStorage.getItem("adminAuthed") === "true"
+  );
+
   const [schedules, setSchedules] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [openClass, setOpenClass] = useState(null);
@@ -29,6 +102,8 @@ const Admin = () => {
   const [newClassName, setNewClassName] = useState("");
 
   useEffect(() => {
+    if (!isAuthed) return; // 💡 認証前はFirestoreを読みに行かない
+
     const fetchCurrentSchedule = async () => {
       try {
         const snapshot = await getDocs(collection(db, "schedules"));
@@ -50,7 +125,7 @@ const Admin = () => {
       }
     };
     fetchCurrentSchedule();
-  }, []);
+  }, [isAuthed]);
 
   const updatePeriod = (className, day, periodIndex, value) => {
     setSchedules((prev) => {
@@ -97,6 +172,11 @@ const Admin = () => {
     }
   };
 
+  // 💡 未認証ならパスワード画面だけ表示
+  if (!isAuthed) {
+    return <PasswordGate onSuccess={() => setIsAuthed(true)} />;
+  }
+
   if (isLoading) {
     return (
       <div style={{ padding: "40px", textAlign: "center", color: "#666", backgroundColor: "#fff", minHeight: "100vh" }}>
@@ -105,10 +185,11 @@ const Admin = () => {
     );
   }
 
-  const classNames = Object.keys(schedules).sort();
+  const classNames = Object.keys(schedules)
+    .filter((key) => !RESERVED_KEYS.includes(key))
+    .sort();
 
   return (
-    // 💡 position/overflow/背景色/文字色をここで明示的に上書きする
     <div
       style={{
         position: "fixed",
