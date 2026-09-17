@@ -6,13 +6,6 @@ import defaultSchedule from "../data/schedule.json";
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const RESERVED_KEYS = ["types"];
 
-// 💡 これでどうだ？？
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD;
-
-if (!ADMIN_PASSWORD) {
-  console.warn("⚠️ VITE_ADMIN_PASSWORD が設定されていません");
-}
-
 const getSubjectText = (entry) => {
   if (entry == null) return "";
   return typeof entry === "string" ? entry : entry.subject || "";
@@ -28,18 +21,31 @@ const inputStyle = {
   color: "#222",
 };
 
-// 💡 パスワード入力画面
+// 💡 パスワード入力画面（サーバー側で照合する方式）
 function PasswordGate({ onSuccess }) {
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (input === ADMIN_PASSWORD) {
-      sessionStorage.setItem("adminAuthed", "true");
-      onSuccess();
-    } else {
-      setError("パスワードが違います");
+    setError("");
+    try {
+      const res = await fetch("/api/verify-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: input }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        sessionStorage.setItem("adminAuthed", "true");
+        sessionStorage.setItem("adminToken", data.token);
+        onSuccess();
+      } else {
+        setError("パスワードが違います");
+      }
+    } catch (err) {
+      setError("通信エラーが発生しました");
     }
   };
 
