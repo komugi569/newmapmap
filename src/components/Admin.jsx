@@ -6,8 +6,8 @@ import defaultSchedule from "../data/schedule.json";
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const RESERVED_KEYS = ["types"];
 
-// 💡 パスワードはここで設定（必要に応じて変更してください）
-const ADMIN_PASSWORD = "pine-2";
+// 💡 パスワードさらすなぼけ
+const ADMIN_PASSWORD = "hahaha";
 
 const getSubjectText = (entry) => {
   if (entry == null) return "";
