@@ -6,7 +6,7 @@ import rooms from "../data/rooms";
 import { usePanZoom } from "../hooks/usePanZoom";
 import { useCurrentPeriod } from "../hooks/useCurrentPeriod";
 import { useMyClass } from "../hooks/useMyClass";
-import { doc, onSnapshot } from "firebase/firestore"; // 💡 getDoc から onSnapshot に変更
+import { doc, collection, onSnapshot } from "firebase/firestore"; // 💡 getDoc から onSnapshot に変更
 import { db } from "../firebase";
 
 const MAP_WIDTH = 1848;
@@ -20,33 +20,21 @@ export default function MapContainer() {
 
   const [, setRefreshKey] = useState(0);
 
-  // 💡 onSnapshot でFirebaseのデータをリアルタイム監視する
-  useEffect(() => {
-    if (!selectedClass) return;
 
-    const docRef = doc(db, "schedules", selectedClass);
-    
-    // データが更新されるたびに、この中の処理が自動で走ります！
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const scheduleData = docSnap.data();
-        
-        const savedStr = localStorage.getItem("scheduleKey");
-        const allSchedules = savedStr ? JSON.parse(savedStr) : {};
-        
-        allSchedules[selectedClass] = scheduleData;
-        localStorage.setItem("scheduleKey", JSON.stringify(allSchedules));
-        
-        // 画面を再描画させる
-        setRefreshKey((prev) => prev + 1);
-      }
-    }, (error) => {
-      console.error("データ監視エラー:", error);
+useEffect(() => {
+  const unsubscribe = onSnapshot(collection(db, "schedules"), (snapshot) => {
+    const allSchedules = {};
+    snapshot.forEach((docSnap) => {
+      allSchedules[docSnap.id] = docSnap.data();
     });
+    localStorage.setItem("scheduleKey", JSON.stringify(allSchedules));
+    setRefreshKey((prev) => prev + 1);
+  }, (error) => {
+    console.error("データ監視エラー:", error);
+  });
 
-    // コンポーネントが消えるときに監視を解除するお片付け処理
-    return () => unsubscribe();
-  }, [selectedClass]);
+  return () => unsubscribe();
+}, []); // selectedClass依存も不要になる
 
   const filteredRooms = rooms.filter((room) => room.floor === currentFloor);
 
