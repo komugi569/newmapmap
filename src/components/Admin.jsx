@@ -6,8 +6,12 @@ import defaultSchedule from "../data/schedule.json";
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const RESERVED_KEYS = ["types"];
 
-// 💡 パスワードさらすなぼけ
-const ADMIN_PASSWORD = "hahaha";
+// 💡 これでどうだ？？
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD;
+
+if (!ADMIN_PASSWORD) {
+  console.warn("⚠️ VITE_ADMIN_PASSWORD が設定されていません");
+}
 
 const getSubjectText = (entry) => {
   if (entry == null) return "";
