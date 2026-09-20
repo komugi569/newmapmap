@@ -19,12 +19,13 @@ function resolveFillColor(role, color, status) {
 }
 
 export default function Room(room) {
-  const { x, y, width, height, fontSize, vertical, breakMode, id, label, role, color, isMyClass } = room;
+  const { x, y, width, height, fontSize, vertical, breakMode, id, label, role, color, isMyClass, referenceDate } = room;
 
   const text = label ?? id;
   const lines = splitLabel(text, breakMode);
 
-  const { status, label: subLabel } = getRoomStatus(room);
+  // 💡 referenceDate があればそれを基準に、無ければ現在時刻で判定
+  const { status, label: subLabel } = getRoomStatus(room, { now: referenceDate });
   const fillColor = resolveFillColor(role, color, status);
 
   const isClickable = role !== "noClick" && role !== "shape";

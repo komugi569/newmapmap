@@ -6,11 +6,17 @@ import rooms from "../data/rooms";
 import { usePanZoom } from "../hooks/usePanZoom";
 import { useCurrentPeriod } from "../hooks/useCurrentPeriod";
 import { useMyClass } from "../hooks/useMyClass";
-import { doc, collection, onSnapshot } from "firebase/firestore"; // 💡 getDoc から onSnapshot に変更
+import { doc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 
 const MAP_WIDTH = 1848;
 const MAP_HEIGHT = 1245;
+
+// 💡 datetime-local input用にDateを "YYYY-MM-DDTHH:mm" 形式に変換
+const toDateTimeLocalValue = (date) => {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 export default function MapContainer() {
   const [currentFloor, setCurrentFloor] = useState(2);
@@ -20,21 +26,32 @@ export default function MapContainer() {
 
   const [, setRefreshKey] = useState(0);
 
+  // 💡 時間指定機能用のstate
+  const [isLive, setIsLive] = useState(true);
+  const [customDateTime, setCustomDateTime] = useState(() => toDateTimeLocalValue(new Date()));
 
-useEffect(() => {
-  const unsubscribe = onSnapshot(collection(db, "schedules"), (snapshot) => {
-    const allSchedules = {};
-    snapshot.forEach((docSnap) => {
-      allSchedules[docSnap.id] = docSnap.data();
-    });
-    localStorage.setItem("scheduleKey", JSON.stringify(allSchedules));
-    setRefreshKey((prev) => prev + 1);
-  }, (error) => {
-    console.error("データ監視エラー:", error);
-  });
+  // 💡 実際に判定に使う基準日時（リアルタイムなら現在、そうでなければ指定日時）
+  const referenceDate = isLive ? new Date() : new Date(customDateTime);
 
-  return () => unsubscribe();
-}, []); // selectedClass依存も不要になる
+  // 全クラス分をリアルタイム購読する
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "schedules"),
+      (snapshot) => {
+        const allSchedules = {};
+        snapshot.forEach((docSnap) => {
+          allSchedules[docSnap.id] = docSnap.data();
+        });
+        localStorage.setItem("scheduleKey", JSON.stringify(allSchedules));
+        setRefreshKey((prev) => prev + 1);
+      },
+      (error) => {
+        console.error("データ監視エラー:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const filteredRooms = rooms.filter((room) => room.floor === currentFloor);
 
@@ -48,6 +65,54 @@ useEffect(() => {
         currentFloor={currentFloor}
         onFloorChange={setCurrentFloor}
       />
+
+      {/* 💡 時間指定パネル */}
+      <div
+        style={{
+          position: "fixed",
+          top: "70px",
+          right: "10px",
+          zIndex: 1000,
+          background: "#fff",
+          border: "1px solid #ccc",
+          borderRadius: "8px",
+          padding: "10px",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+          fontSize: "13px",
+          color: "#222",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: isLive ? 0 : "8px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={isLive}
+              onChange={(e) => setIsLive(e.target.checked)}
+            />
+            リアルタイム
+          </label>
+        </div>
+
+        {!isLive && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <input
+              type="datetime-local"
+              value={customDateTime}
+              onChange={(e) => setCustomDateTime(e.target.value)}
+              style={{ padding: "4px", border: "1px solid #ccc", borderRadius: "4px", color: "#222", backgroundColor: "#fff" }}
+            />
+            <button
+              onClick={() => {
+                setCustomDateTime(toDateTimeLocalValue(new Date()));
+                setIsLive(true);
+              }}
+              style={{ padding: "4px 8px", background: "#eee", border: "1px solid #ccc", borderRadius: "4px", cursor: "pointer", color: "#222" }}
+            >
+              現在に戻す
+            </button>
+          </div>
+        )}
+      </div>
 
       <div
         style={{
@@ -78,10 +143,11 @@ useEffect(() => {
 
             <g id="rooms">
               {filteredRooms.map((room) => (
-                <Room 
-                  key={room.id} 
-                  {...room} 
-                  isMyClass={room.id === selectedClass} 
+                <Room
+                  key={room.id}
+                  {...room}
+                  isMyClass={room.id === selectedClass}
+                  referenceDate={referenceDate}
                 />
               ))}
             </g>

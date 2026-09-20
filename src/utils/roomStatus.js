@@ -1,9 +1,6 @@
 import defaultSchedule from "../data/schedule.json";
 import { getToday, getCurrentPeriod } from "./dateUtils";
 
-/**
- * 💡 localStorage から Firebase の最新スケジュールを読み込む関数
- */
 const getCloudSchedule = () => {
   try {
     const data = localStorage.getItem("scheduleKey");
@@ -14,16 +11,10 @@ const getCloudSchedule = () => {
   }
 };
 
-/**
- * 指定クラス・曜日・時限の科目名を返す（無ければ null）。
- */
 export const getSubjectAt = (classId, day, period, scheduleSource = defaultSchedule) => {
-  // 💡 1. localStorageのクラウドデータと、元のJSONデータを合体（マージ）させる
   const cloudSchedule = getCloudSchedule() || {};
-  
-  // クラウドデータに該当クラスの情報があればそれを優先、なければローカルJSONを使う
   const classSchedule = cloudSchedule[classId] || scheduleSource[classId];
-  
+
   if (!classSchedule) return null;
 
   const daySchedule = classSchedule[day];
@@ -36,10 +27,11 @@ export const getSubjectAt = (classId, day, period, scheduleSource = defaultSched
 
 /**
  * 部屋オブジェクトから表示用の状態（色分け用ステータスとサブラベル）を計算する。
+ * options.now を渡すと、その日時を基準に判定する（省略時は現在時刻）。
  */
 export const getRoomStatus = (room, options = {}) => {
   const { id, role, label } = room;
-  const { scheduleSource = defaultSchedule, period: periodOverride } = options;
+  const { scheduleSource = defaultSchedule, period: periodOverride, now } = options;
 
   if (role === "noClick") {
     return { status: "disabled", label: null };
@@ -54,8 +46,9 @@ export const getRoomStatus = (room, options = {}) => {
   }
 
   if (role === "classroom") {
-    const today = getToday();
-    const period = periodOverride !== undefined ? periodOverride : getCurrentPeriod();
+    // 💡 now が渡されればその日時、無ければ現在時刻を基準にする
+    const today = getToday(now);
+    const period = periodOverride !== undefined ? periodOverride : getCurrentPeriod(now);
 
     if (period === null) {
       return { status: "free", label: "" };
@@ -66,6 +59,5 @@ export const getRoomStatus = (room, options = {}) => {
     return subject ? { status: "using", label: subject.subject || subject } : { status: "free", label: "" };
   }
 
-  // fallback
   return { status: "free", label };
 };

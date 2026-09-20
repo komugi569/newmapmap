@@ -3,10 +3,21 @@ import { doc, setDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import defaultSchedule from "../data/schedule.json";
 
-const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// 曜日ごとのデフォルト時限数（平日は6限、土曜は4限まで）
+const DEFAULT_PERIOD_COUNT = {
+  Mon: 6,
+  Tue: 6,
+  Wed: 6,
+  Thu: 6,
+  Fri: 6,
+  Sat: 4,
+};
+
 const RESERVED_KEYS = ["types"];
 
-// 💡 学年グループの定義（先頭の数字で判定）
+// 学年グループの定義（先頭の数字で判定）
 const GRADE_GROUPS = [
   { key: "1", label: "一年生" },
   { key: "2", label: "二年生" },
@@ -15,7 +26,7 @@ const GRADE_GROUPS = [
 
 // クラス名から学年グループを判定する
 const getGradeGroup = (className) => {
-  const match = className.match(/^(\d)/); // 先頭の数字1文字を取り出す
+  const match = className.match(/^(\d)/);
   if (match) {
     const grade = GRADE_GROUPS.find((g) => g.key === match[1]);
     if (grade) return grade.label;
@@ -23,24 +34,24 @@ const getGradeGroup = (className) => {
   return "その他";
 };
 
-const getSubjectText = (entry) => {
-  if (entry == null) return "";
-  return typeof entry === "string" ? entry : entry.subject || "";
-};
-
-// 💡 クラス名を「学年-組」として数値順に並べる比較関数
+// クラス名を「学年-組」として数値順に並べる比較関数
 const compareClassNames = (a, b) => {
   const parse = (name) => {
-    const match = name.match(/^(\d+)-(\d+)/); // 例: "3-10" → [3, 10]
+    const match = name.match(/^(\d+)-(\d+)/);
     if (match) return [Number(match[1]), Number(match[2])];
-    return [Infinity, Infinity]; // 数値形式でないものは最後に回す
+    return [Infinity, Infinity];
   };
   const [aGrade, aClass] = parse(a);
   const [bGrade, bClass] = parse(b);
 
   if (aGrade !== bGrade) return aGrade - bGrade;
   if (aClass !== bClass) return aClass - bClass;
-  return a.localeCompare(b); // 完全に同じ数値なら文字列順で保険
+  return a.localeCompare(b);
+};
+
+const getSubjectText = (entry) => {
+  if (entry == null) return "";
+  return typeof entry === "string" ? entry : entry.subject || "";
 };
 
 const inputStyle = {
@@ -129,8 +140,6 @@ function PasswordGate({ onSuccess }) {
   );
 }
 
-
-
 const Admin = () => {
   const [isAuthed, setIsAuthed] = useState(
     () => sessionStorage.getItem("adminAuthed") === "true"
@@ -139,10 +148,14 @@ const Admin = () => {
   const [schedules, setSchedules] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [openClass, setOpenClass] = useState(null);
-  const [openGroup, setOpenGroup] = useState(null); // 💡 開いている学年グループ
+  const [openGroup, setOpenGroup] = useState(null);
   const [savingClass, setSavingClass] = useState(null);
   const [message, setMessage] = useState("");
   const [newClassName, setNewClassName] = useState("");
+
+  // 💡 JSON一括取り込み用のstate
+  const [jsonImportText, setJsonImportText] = useState("");
+  const [showJsonImport, setShowJsonImport] = useState(false);
 
   useEffect(() => {
     if (!isAuthed) return;
@@ -189,16 +202,39 @@ const Admin = () => {
     });
   };
 
+  // 新規クラス作成時、曜日ごとのデフォルト枠数だけ空の時限を用意する
   const addClass = () => {
     const name = newClassName.trim();
     if (!name || schedules[name]) return;
     setSchedules((prev) => ({
       ...prev,
-      [name]: Object.fromEntries(DAY_ORDER.map((d) => [d, []])),
+      [name]: Object.fromEntries(
+        DAY_ORDER.map((d) => [d, Array(DEFAULT_PERIOD_COUNT[d]).fill("")])
+      ),
     }));
     setNewClassName("");
     setOpenGroup(getGradeGroup(name));
     setOpenClass(name);
+  };
+
+  // 💡 JSONテキストを解析して画面上のschedulesにまとめて取り込む
+  const handleJsonImport = () => {
+    try {
+      const parsed = JSON.parse(jsonImportText);
+      setSchedules((prev) => ({ ...prev, ...parsed }));
+      const importedNames = Object.keys(parsed);
+      setMessage(
+        `✅ ${importedNames.join(", ")} を取り込みました（画面上のみ反映。各クラスの「保存」ボタンで確定してください）`
+      );
+      setJsonImportText("");
+      setShowJsonImport(false);
+      if (importedNames.length > 0) {
+        setOpenGroup(getGradeGroup(importedNames[0]));
+        setOpenClass(importedNames[0]);
+      }
+    } catch (error) {
+      setMessage(`❌ JSONの形式が正しくありません: ${error.message}`);
+    }
   };
 
   const handleSaveClass = async (className) => {
@@ -227,11 +263,11 @@ const Admin = () => {
       </div>
     );
   }
+
   const classNames = Object.keys(schedules)
     .filter((key) => !RESERVED_KEYS.includes(key))
     .sort(compareClassNames);
 
-  // 💡 学年ごとにクラスをグループ化(数値順ソートを適用)
   const groupOrder = [...GRADE_GROUPS.map((g) => g.label), "その他"];
   const grouped = groupOrder.reduce((acc, label) => {
     acc[label] = classNames
@@ -256,7 +292,7 @@ const Admin = () => {
         <h2 style={{ color: "#222" }}>⚙️ 時間割 管理パネル</h2>
         <p style={{ color: "#666" }}>学年 → クラスの順に開いて編集し、「保存」を押すとそのクラスだけFirebaseに反映されます。</p>
 
-        <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
           <input
             value={newClassName}
             onChange={(e) => setNewClassName(e.target.value)}
@@ -271,9 +307,36 @@ const Admin = () => {
           </button>
         </div>
 
+        {/* 💡 JSON一括取り込みセクション */}
+        <div style={{ marginBottom: "20px" }}>
+          <button
+            onClick={() => setShowJsonImport(!showJsonImport)}
+            style={{ padding: "6px 12px", background: "#eee", color: "#222", border: "1px solid #ccc", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}
+          >
+            {showJsonImport ? "▲ JSON貼り付けを閉じる" : "📋 JSONから一括取り込み"}
+          </button>
+
+          {showJsonImport && (
+            <div style={{ marginTop: "10px" }}>
+              <textarea
+                value={jsonImportText}
+                onChange={(e) => setJsonImportText(e.target.value)}
+                placeholder='例: {"3-12": {"Mon": ["国語", "英語3B", ...], ...}}'
+                style={{ width: "100%", height: "150px", fontFamily: "monospace", padding: "10px", border: "1px solid #ccc", borderRadius: "6px", backgroundColor: "#fff", color: "#222" }}
+              />
+              <button
+                onClick={handleJsonImport}
+                style={{ marginTop: "8px", padding: "8px 16px", background: "#007bff", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
+              >
+                取り込む
+              </button>
+            </div>
+          )}
+        </div>
+
         {groupOrder.map((groupLabel) => {
           const groupClasses = grouped[groupLabel];
-          if (groupClasses.length === 0) return null; // 該当クラスが無い学年は表示しない
+          if (groupClasses.length === 0) return null;
 
           const isGroupOpen = openGroup === groupLabel;
 
