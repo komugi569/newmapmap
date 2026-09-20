@@ -4,34 +4,28 @@ import MapControls from "./MapControls";
 import CorridorPaths from "./CorridorPaths";
 import rooms from "../data/rooms";
 import { usePanZoom } from "../hooks/usePanZoom";
-import { useCurrentPeriod } from "../hooks/useCurrentPeriod";
-import { useMyClass } from "../hooks/useMyClass";
 import { doc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
+import { getCurrentPeriod } from "../utils/dateUtils";
 
 const MAP_WIDTH = 1848;
 const MAP_HEIGHT = 1245;
 
-// 💡 datetime-local input用にDateを "YYYY-MM-DDTHH:mm" 形式に変換
-const toDateTimeLocalValue = (date) => {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+// 💡 現在時刻を「0:00からの経過分」に変換
+const nowToMinutes = () => {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
 };
 
 export default function MapContainer() {
   const [currentFloor, setCurrentFloor] = useState(2);
-  const period = useCurrentPeriod();
-  const { selectedClass, classList, selectClass } = useMyClass();
   const { scale, coords, isDragging, handlers } = usePanZoom(0.7);
 
   const [, setRefreshKey] = useState(0);
 
-  // 💡 時間指定機能用のstate
+  // 💡 時間バー用のstate（分単位）。初期値は現在時刻
+  const [timeMinutes, setTimeMinutes] = useState(nowToMinutes);
   const [isLive, setIsLive] = useState(true);
-  const [customDateTime, setCustomDateTime] = useState(() => toDateTimeLocalValue(new Date()));
-
-  // 💡 実際に判定に使う基準日時（リアルタイムなら現在、そうでなければ指定日時）
-  const referenceDate = isLive ? new Date() : new Date(customDateTime);
 
   // 全クラス分をリアルタイム購読する
   useEffect(() => {
@@ -53,66 +47,49 @@ export default function MapContainer() {
     return () => unsubscribe();
   }, []);
 
+  // 💡 ライブモードの間は1分ごとに現在時刻へ追従させる
+  useEffect(() => {
+    if (!isLive) return;
+    setTimeMinutes(nowToMinutes());
+    const interval = setInterval(() => {
+      setTimeMinutes(nowToMinutes());
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [isLive]);
+
+  // バーを操作したら手動モードに切り替える
+  const handleTimeChange = (minutes) => {
+    setIsLive(false);
+    setTimeMinutes(minutes);
+  };
+
+  const handleResetToNow = () => {
+    setIsLive(true);
+    setTimeMinutes(nowToMinutes());
+  };
+
+  // 💡 指定された「今日の分」を、今日の日付のDateオブジェクトに変換
+  const referenceDate = (() => {
+    const d = new Date();
+    d.setHours(Math.floor(timeMinutes / 60), timeMinutes % 60, 0, 0);
+    return d;
+  })();
+
+ const period = getCurrentPeriod(referenceDate);
+
   const filteredRooms = rooms.filter((room) => room.floor === currentFloor);
 
   return (
     <div style={{ position: "fixed", width: "100%", height: "100%", overflow: "hidden" }}>
       <MapControls
         period={period}
-        selectedClass={selectedClass}
-        classList={classList}
-        onClassChange={selectClass}
+        timeMinutes={timeMinutes}
+        onTimeChange={handleTimeChange}
+        isLive={isLive}
+        onResetToNow={handleResetToNow}
         currentFloor={currentFloor}
         onFloorChange={setCurrentFloor}
       />
-
-      {/* 💡 時間指定パネル */}
-      <div
-        style={{
-          position: "fixed",
-          top: "70px",
-          right: "10px",
-          zIndex: 1000,
-          background: "#fff",
-          border: "1px solid #ccc",
-          borderRadius: "8px",
-          padding: "10px",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-          fontSize: "13px",
-          color: "#222",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: isLive ? 0 : "8px" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={isLive}
-              onChange={(e) => setIsLive(e.target.checked)}
-            />
-            リアルタイム
-          </label>
-        </div>
-
-        {!isLive && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <input
-              type="datetime-local"
-              value={customDateTime}
-              onChange={(e) => setCustomDateTime(e.target.value)}
-              style={{ padding: "4px", border: "1px solid #ccc", borderRadius: "4px", color: "#222", backgroundColor: "#fff" }}
-            />
-            <button
-              onClick={() => {
-                setCustomDateTime(toDateTimeLocalValue(new Date()));
-                setIsLive(true);
-              }}
-              style={{ padding: "4px 8px", background: "#eee", border: "1px solid #ccc", borderRadius: "4px", cursor: "pointer", color: "#222" }}
-            >
-              現在に戻す
-            </button>
-          </div>
-        )}
-      </div>
 
       <div
         style={{
@@ -146,7 +123,7 @@ export default function MapContainer() {
                 <Room
                   key={room.id}
                   {...room}
-                  isMyClass={room.id === selectedClass}
+                  isMyClass={false}
                   referenceDate={referenceDate}
                 />
               ))}
