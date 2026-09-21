@@ -4,17 +4,23 @@ import MapControls from "./MapControls";
 import CorridorPaths from "./CorridorPaths";
 import rooms from "../data/rooms";
 import { usePanZoom } from "../hooks/usePanZoom";
+import { getCurrentPeriod } from "../utils/dateUtils";
 import { doc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-import { getCurrentPeriod } from "../utils/dateUtils";
 
 const MAP_WIDTH = 1848;
 const MAP_HEIGHT = 1245;
 
-// 💡 現在時刻を「0:00からの経過分」に変換
 const nowToMinutes = () => {
   const now = new Date();
   return now.getHours() * 60 + now.getMinutes();
+};
+
+// 💡 時刻だけの日付(今日)を返す
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
 };
 
 export default function MapContainer() {
@@ -23,11 +29,10 @@ export default function MapContainer() {
 
   const [, setRefreshKey] = useState(0);
 
-  // 💡 時間バー用のstate（分単位）。初期値は現在時刻
   const [timeMinutes, setTimeMinutes] = useState(nowToMinutes);
+  const [targetDate, setTargetDate] = useState(startOfToday); // 💡 日付のstate
   const [isLive, setIsLive] = useState(true);
 
-  // 全クラス分をリアルタイム購読する
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, "schedules"),
@@ -47,35 +52,43 @@ export default function MapContainer() {
     return () => unsubscribe();
   }, []);
 
-  // 💡 ライブモードの間は1分ごとに現在時刻へ追従させる
+  // ライブモードの間は1分ごとに現在時刻・今日の日付へ追従させる
   useEffect(() => {
     if (!isLive) return;
     setTimeMinutes(nowToMinutes());
+    setTargetDate(startOfToday());
     const interval = setInterval(() => {
       setTimeMinutes(nowToMinutes());
+      setTargetDate(startOfToday());
     }, 60 * 1000);
     return () => clearInterval(interval);
   }, [isLive]);
 
-  // バーを操作したら手動モードに切り替える
   const handleTimeChange = (minutes) => {
     setIsLive(false);
     setTimeMinutes(minutes);
   };
 
+  // 💡 日付操作は手動モードに切り替える
+  const handleDateChange = (newDate) => {
+    setIsLive(false);
+    setTargetDate(newDate);
+  };
+
   const handleResetToNow = () => {
     setIsLive(true);
     setTimeMinutes(nowToMinutes());
+    setTargetDate(startOfToday());
   };
 
-  // 💡 指定された「今日の分」を、今日の日付のDateオブジェクトに変換
+  // 💡 指定された日付 + 時刻を組み合わせて基準日時を作る
   const referenceDate = (() => {
-    const d = new Date();
+    const d = new Date(targetDate);
     d.setHours(Math.floor(timeMinutes / 60), timeMinutes % 60, 0, 0);
     return d;
   })();
 
- const period = getCurrentPeriod(referenceDate);
+  const period = getCurrentPeriod(referenceDate);
 
   const filteredRooms = rooms.filter((room) => room.floor === currentFloor);
 
@@ -85,6 +98,8 @@ export default function MapContainer() {
         period={period}
         timeMinutes={timeMinutes}
         onTimeChange={handleTimeChange}
+        targetDate={targetDate}
+        onDateChange={handleDateChange}
         isLive={isLive}
         onResetToNow={handleResetToNow}
         currentFloor={currentFloor}

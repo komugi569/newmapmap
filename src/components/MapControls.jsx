@@ -1,7 +1,6 @@
 const FLOORS = [2, 3];
 
-// 💡 時間バーの範囲(分単位、0:00からの経過分)
-// 💡 時間バーの範囲(分単位、0:00からの経過分)
+// 時間バーの範囲(分単位、0:00からの経過分)
 const TIME_MIN = 8 * 60; // 8:00
 const TIME_MAX = 18 * 60; // 18:00
 
@@ -11,15 +10,36 @@ const formatMinutes = (totalMinutes) => {
   return `${h}:${String(m).padStart(2, "0")}`;
 };
 
+// 💡 日付を "9/21(月)" のような形式で表示
+const formatDate = (date) => {
+  const dayNames = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${date.getMonth() + 1}/${date.getDate()}(${dayNames[date.getDay()]})`;
+};
+
+const isSameDate = (a, b) =>
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate();
+
 export default function MapControls({
   period,
   timeMinutes,
   onTimeChange,
+  targetDate,
+  onDateChange,
   isLive,
   onResetToNow,
   currentFloor,
   onFloorChange,
 }) {
+  const isToday = isSameDate(targetDate, new Date());
+
+  const shiftDate = (days) => {
+    const next = new Date(targetDate);
+    next.setDate(next.getDate() + days);
+    onDateChange(next);
+  };
+
   return (
     <div
       style={{
@@ -65,6 +85,25 @@ export default function MapControls({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 💡 日付操作 */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+        <button
+          onClick={() => shiftDate(-1)}
+          style={{ padding: "4px 10px", fontSize: "14px", background: "#eee", border: "1px solid #ccc", borderRadius: "6px", cursor: "pointer", color: "#333" }}
+        >
+          ◀
+        </button>
+        <span style={{ fontSize: "14px", fontWeight: "bold", color: "#333", minWidth: "80px", textAlign: "center" }}>
+          {formatDate(targetDate)}{isToday && !isLive ? "（今日）" : ""}
+        </span>
+        <button
+          onClick={() => shiftDate(1)}
+          style={{ padding: "4px 10px", fontSize: "14px", background: "#eee", border: "1px solid #ccc", borderRadius: "6px", cursor: "pointer", color: "#333" }}
+        >
+          ▶
+        </button>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
